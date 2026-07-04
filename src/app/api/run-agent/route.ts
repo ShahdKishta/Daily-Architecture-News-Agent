@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { gemini, GEMINI_MODEL } from "@/lib/gemini";
-import { resend, REPORT_FROM_ADDRESS } from "@/lib/resend";
+import { sendTelegramMessage, buildTelegramDigestMessage } from "@/lib/telegram";
 import { supabase, type DailyReportArticle, type UserConfig } from "@/lib/supabase";
-import { buildDailyReportEmailHtml } from "@/lib/email-template";
 
 // Web search + multiple users can take a while; allow up to 5 minutes.
 // (Requires a Vercel plan that supports function durations beyond the
@@ -98,6 +97,10 @@ async function processUser(user: UserConfig): Promise<UserRunResult> {
     timeZone: "UTC",
   });
 
+  if (!user.telegram_chat_id) {
+    throw new Error("Missing telegram_chat_id for this user.");
+  }
+
   const articles = await fetchTopArticles(user.keywords, user.news_count);
   const summary = buildMarkdownSummary(articles, user.keywords, dateLabel);
 
@@ -111,21 +114,16 @@ async function processUser(user: UserConfig): Promise<UserRunResult> {
     throw new Error(`Failed to save report: ${insertError.message}`);
   }
 
-  const emailHtml = buildDailyReportEmailHtml({
+  const telegramMessage = buildTelegramDigestMessage({
     articles,
     keywords: user.keywords,
     dateLabel,
   });
 
-  const { error: sendError } = await resend.emails.send({
-    from: REPORT_FROM_ADDRESS,
-    to: user.email,
-    subject: `Your Daily Architecture & Sustainability Digest — ${dateLabel}`,
-    html: emailHtml,
-  });
+  const sendResult = await sendTelegramMessage(user.telegram_chat_id, telegramMessage);
 
-  if (sendError) {
-    throw new Error(`Failed to send email: ${sendError.message}`);
+  if (!sendResult.success) {
+    throw new Error(`Failed to send Telegram message: ${sendResult.error}`);
   }
 
   return { email: user.email, status: "sent", articleCount: articles.length };

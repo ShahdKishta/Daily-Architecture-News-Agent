@@ -7,13 +7,17 @@ create extension if not exists pgcrypto;
 -- user_config: one row per user, keyed by email
 -- ─────────────────────────────────────────────────────────
 create table if not exists user_config (
-  id          uuid primary key default gen_random_uuid(),
-  email       text not null,
-  keywords    text[] not null default '{}',
-  news_count  integer not null default 5,
-  run_time    text not null default '13', -- preferred hour to run, UTC, "0"-"23"
-  created_at  timestamptz not null default now()
+  id                uuid primary key default gen_random_uuid(),
+  email             text not null,
+  keywords          text[] not null default '{}',
+  news_count        integer not null default 5,
+  run_time          text not null default '13', -- preferred hour to run, UTC, "0"-"23"
+  telegram_chat_id  text, -- Telegram chat to deliver the digest to (nullable)
+  created_at        timestamptz not null default now()
 );
+
+-- Migration for databases created before telegram_chat_id existed.
+alter table user_config add column if not exists telegram_chat_id text;
 
 -- Enforce one config per email and make email lookups (and the upsert's
 -- ON CONFLICT (email) target) fast.

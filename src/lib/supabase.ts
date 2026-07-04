@@ -24,6 +24,7 @@ export type UserConfig = {
   keywords: string[];
   news_count: number;
   run_time: string;
+  telegram_chat_id: string | null;
   created_at: string;
 };
 

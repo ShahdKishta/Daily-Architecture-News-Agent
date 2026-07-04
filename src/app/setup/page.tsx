@@ -11,6 +11,7 @@ export default function SetupPage() {
   const [newsCount, setNewsCount] = useState(5);
   const [keywords, setKeywords] = useState(DEFAULT_KEYWORDS);
   const [runTime, setRunTime] = useState("13");
+  const [telegramChatId, setTelegramChatId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -30,6 +31,7 @@ export default function SetupPage() {
         newsCount,
         keywords: keywordList,
         runTime,
+        telegramChatId,
       });
 
       // If we get here without a redirect having happened, either the
@@ -79,6 +81,32 @@ export default function SetupPage() {
               placeholder="you@example.com"
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
             />
+            <p className="mt-1 text-xs text-gray-400">
+              Used to identify your account. Digests are delivered via
+              Telegram, not email.
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="telegramChatId"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Telegram Chat ID
+            </label>
+            <input
+              id="telegramChatId"
+              type="text"
+              required
+              value={telegramChatId}
+              onChange={(e) => setTelegramChatId(e.target.value)}
+              placeholder="123456789"
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Your daily digest is delivered here via Telegram. Message our
+              bot, then message @userinfobot to find your chat ID.
+            </p>
           </div>
 
           <div>

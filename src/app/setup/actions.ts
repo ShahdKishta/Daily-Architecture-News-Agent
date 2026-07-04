@@ -10,6 +10,7 @@ export type SetupFormInput = {
   newsCount: number;
   keywords: string[];
   runTime: string;
+  telegramChatId: string;
 };
 
 export type SaveUserConfigResult = { error: string };
@@ -22,6 +23,7 @@ export async function saveUserConfig(
 ): Promise<SaveUserConfigResult | void> {
   const email = input.email.trim().toLowerCase();
   const keywords = input.keywords.map((k) => k.trim()).filter(Boolean);
+  const telegramChatId = input.telegramChatId.trim();
 
   if (!email || !email.includes("@")) {
     return { error: "Please enter a valid email address." };
@@ -35,6 +37,9 @@ export async function saveUserConfig(
   if (!/^\d{1,2}$/.test(input.runTime) || Number(input.runTime) > 23) {
     return { error: "Please choose a valid run time." };
   }
+  if (!telegramChatId) {
+    return { error: "Please enter your Telegram Chat ID." };
+  }
 
   const { error } = await supabase.from("user_config").upsert(
     {
@@ -42,6 +47,7 @@ export async function saveUserConfig(
       keywords,
       news_count: input.newsCount,
       run_time: input.runTime,
+      telegram_chat_id: telegramChatId,
     },
     { onConflict: "email" }
   );

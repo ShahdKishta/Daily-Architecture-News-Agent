@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"G:\\\\Users\\\\Shahd\\\\Desktop\\\\Universty\\\\5th year 1st semester\\\\موضوعات\\\\Website\" 2>/dev/null; echo \"---\"; ls \"G:\\\\Users\\\\Shahd\\\\Desktop\\\\Universty\\\\5th year 1st semester\\\\موضوعات\")",
+      "Bash(ls -la Website)",
+      "Bash(ls -la \"Assignment 2\")",
+      "Bash(ls -la ai-assignment.html)",
+      "Bash(ls Skills)",
+      "Bash(npm -v)",
+      "PowerShell(node -v)",
+      "PowerShell(npm -v)",
+      "Bash(cd \"G:/Users/Shahd/Desktop/Universty\" && ls -la | grep -i \"5th\")",
+      "Bash(rm -rf \"G:/Users/Shahd/Desktop/Universty/5th年 1st semester\" && ls \"G:/Users/Shahd/Desktop/Universty\" | grep -i \"5th\")",
+      "Bash(npm install *)",
+      "Bash(npm view *)",
+      "Bash(npm audit *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(xargs grep -l \"class Emails\")",
+      "WebSearch",
+      "Bash(node --env-file=.env.local insert-mock-user.mjs)",
+      "Bash(disown)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -X POST http://localhost:3000/api/run-agent -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" --max-time 120)",
+      "Bash(node --env-file=.env.local diag-gemini.mjs)",
+      "Bash(node --env-file=.env.local check-report.mjs)",
+      "Bash(rm -rf \"G:/Users/Shahd/Desktop/Universty/5th年 1st semester\" && ls \"G:/Users/Shahd/Desktop/Universty\" | grep -i 5th)",
+      "Bash(node --env-file=.env.local check-email.mjs)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //F //PID 26464)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}
