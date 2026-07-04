@@ -1,6 +1,10 @@
 import type { DailyReportArticle } from "@/lib/supabase";
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+// Trimmed defensively: a stray trailing newline/space in the env var (easy
+// to introduce pasting into Vercel's dashboard) would otherwise get baked
+// into the URL below, causing fetch() to throw a URL-parse error before
+// any network request is ever attempted.
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN?.trim();
 
 if (!TELEGRAM_BOT_TOKEN) {
   throw new Error("Missing TELEGRAM_BOT_TOKEN environment variable");
@@ -20,38 +24,65 @@ export async function sendTelegramMessage(
   chatId: string,
   html: string
 ): Promise<TelegramSendResult> {
+  const trimmedChatId = chatId.trim();
+
+  if (!trimmedChatId) {
+    const error = "chat_id is empty after trimming.";
+    console.error(`[telegram] ${error}`);
+    return { success: false, error };
+  }
+
+  console.log(
+    `[telegram] Sending message to chat_id=${trimmedChatId} (${html.length} chars)...`
+  );
+
   try {
     const response = await fetch(`${TELEGRAM_API_BASE}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: chatId,
+        chat_id: trimmedChatId,
         text: html,
         parse_mode: "HTML",
         disable_web_page_preview: false,
       }),
     });
 
-    const data: { ok?: boolean; description?: string } = await response
-      .json()
-      .catch(() => ({}));
+    // Read as text first (not .json()) so we can log the raw body even if
+    // Telegram (or a proxy in front of it) returns something non-JSON.
+    const rawBody = await response.text();
+    console.log(
+      `[telegram] chat_id=${trimmedChatId}: HTTP ${response.status} - ${rawBody}`
+    );
 
-    if (!response.ok || !data.ok) {
-      return {
-        success: false,
-        error: data.description ?? `Telegram API error (HTTP ${response.status})`,
-      };
+    let data: { ok?: boolean; description?: string } = {};
+    try {
+      data = JSON.parse(rawBody);
+    } catch {
+      // leave data as {} - handled by the !data.ok check below
     }
 
+    if (!response.ok || !data.ok) {
+      const error =
+        data.description ?? `Telegram API error (HTTP ${response.status})`;
+      console.error(`[telegram] chat_id=${trimmedChatId}: send failed - ${error}`);
+      return { success: false, error };
+    }
+
+    console.log(`[telegram] chat_id=${trimmedChatId}: sent successfully.`);
     return { success: true };
   } catch (err) {
-    return {
-      success: false,
-      error:
-        err instanceof Error
-          ? err.message
-          : "Unknown error sending Telegram message",
-    };
+    const error =
+      err instanceof Error
+        ? err.message
+        : "Unknown error sending Telegram message";
+    console.error(
+      `[telegram] chat_id=${trimmedChatId}: exception before/during fetch - ${error}`
+    );
+    if (err instanceof Error && err.stack) {
+      console.error(err.stack);
+    }
+    return { success: false, error };
   }
 }
 

@@ -29,7 +29,9 @@
       "Bash(pkill -f \"next dev\")",
       "Bash(netstat -ano)",
       "Bash(taskkill //F //PID 26464)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node --env-file=.env.local check-user.mjs)",
+      "Bash(curl -s -X POST http://localhost:3000/api/run-agent -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" --max-time 60)"
     ]
   }
 }

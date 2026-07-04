@@ -36,21 +36,28 @@ After searching, respond with ONLY a single JSON object and nothing else - no ma
   });
 
   const text = (response.text ?? "").trim();
+  console.log(`[run-agent] Gemini raw response length: ${text.length} chars.`);
 
   const jsonStart = text.indexOf("{");
   const jsonEnd = text.lastIndexOf("}");
   if (jsonStart === -1 || jsonEnd === -1) {
+    console.error("[run-agent] Gemini response had no '{...}' to extract:", text);
     throw new Error("Gemini did not return a parseable JSON response.");
   }
 
   let parsed: { articles?: unknown };
   try {
     parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
-  } catch {
+  } catch (err) {
+    console.error(
+      "[run-agent] JSON.parse failed on Gemini response:",
+      err instanceof Error ? err.message : err
+    );
     throw new Error("Failed to parse JSON returned by Gemini.");
   }
 
   if (!Array.isArray(parsed.articles)) {
+    console.error("[run-agent] Parsed Gemini JSON had no 'articles' array:", parsed);
     throw new Error("Gemini response was missing an 'articles' array.");
   }
 
@@ -97,34 +104,75 @@ async function processUser(user: UserConfig): Promise<UserRunResult> {
     timeZone: "UTC",
   });
 
+  console.log(`[run-agent] ${user.email}: starting (user_config_id=${user.id}).`);
+
   if (!user.telegram_chat_id) {
+    console.error(`[run-agent] ${user.email}: no telegram_chat_id on file, skipping.`);
     throw new Error("Missing telegram_chat_id for this user.");
   }
 
-  const articles = await fetchTopArticles(user.keywords, user.news_count);
-  const summary = buildMarkdownSummary(articles, user.keywords, dateLabel);
-
-  const { error: insertError } = await supabase.from("daily_reports").insert({
-    user_config_id: user.id,
-    summary,
-    articles,
-  });
-
-  if (insertError) {
-    throw new Error(`Failed to save report: ${insertError.message}`);
+  let articles: DailyReportArticle[];
+  try {
+    articles = await fetchTopArticles(user.keywords, user.news_count);
+    console.log(
+      `[run-agent] ${user.email}: Gemini responded, parsed ${articles.length} article(s).`
+    );
+  } catch (err) {
+    console.error(
+      `[run-agent] ${user.email}: Gemini call or response parsing failed -`,
+      err instanceof Error ? err.stack ?? err.message : err
+    );
+    throw err;
   }
 
-  const telegramMessage = buildTelegramDigestMessage({
-    articles,
-    keywords: user.keywords,
-    dateLabel,
-  });
+  const summary = buildMarkdownSummary(articles, user.keywords, dateLabel);
+
+  try {
+    const { error: insertError } = await supabase.from("daily_reports").insert({
+      user_config_id: user.id,
+      summary,
+      articles,
+    });
+
+    if (insertError) {
+      throw new Error(`Failed to save report: ${insertError.message}`);
+    }
+    console.log(`[run-agent] ${user.email}: report saved to daily_reports.`);
+  } catch (err) {
+    console.error(
+      `[run-agent] ${user.email}: saving to daily_reports failed -`,
+      err instanceof Error ? err.stack ?? err.message : err
+    );
+    throw err;
+  }
+
+  let telegramMessage: string;
+  try {
+    telegramMessage = buildTelegramDigestMessage({
+      articles,
+      keywords: user.keywords,
+      dateLabel,
+    });
+  } catch (err) {
+    console.error(
+      `[run-agent] ${user.email}: building Telegram message failed -`,
+      err instanceof Error ? err.stack ?? err.message : err
+    );
+    throw err;
+  }
+
+  console.log(
+    `[run-agent] ${user.email}: about to send Telegram message to chat_id=${user.telegram_chat_id}.`
+  );
 
   const sendResult = await sendTelegramMessage(user.telegram_chat_id, telegramMessage);
 
   if (!sendResult.success) {
+    console.error(`[run-agent] ${user.email}: Telegram send failed - ${sendResult.error}`);
     throw new Error(`Failed to send Telegram message: ${sendResult.error}`);
   }
+
+  console.log(`[run-agent] ${user.email}: Telegram message sent successfully.`);
 
   return { email: user.email, status: "sent", articleCount: articles.length };
 }
@@ -133,22 +181,34 @@ async function runAgentForAllUsers(): Promise<UserRunResult[]> {
   const { data: users, error } = await supabase.from("user_config").select("*");
 
   if (error) {
+    console.error("[run-agent] Failed to load user_config:", error.message);
     throw new Error(`Failed to load user_config: ${error.message}`);
   }
 
+  console.log(`[run-agent] Loaded ${users?.length ?? 0} user_config row(s).`);
+
   const results: UserRunResult[] = [];
 
-  for (const user of users ?? []) {
+  // Each user is isolated in its own try/catch: one user's Gemini/DB/Telegram
+  // failure is logged and recorded, but never stops the loop from continuing
+  // to the next user.
+  for (const user of (users ?? []) as UserConfig[]) {
     try {
-      results.push(await processUser(user as UserConfig));
+      results.push(await processUser(user));
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error(`[run-agent] ${user.email}: FAILED - ${message}`);
       results.push({
-        email: (user as UserConfig).email,
+        email: user.email,
         status: "error",
-        error: err instanceof Error ? err.message : "Unknown error",
+        error: message,
       });
     }
   }
+
+  const sentCount = results.filter((r) => r.status === "sent").length;
+  const failedCount = results.filter((r) => r.status === "error").length;
+  console.log(`[run-agent] Done: ${sentCount} sent, ${failedCount} failed.`);
 
   return results;
 }
