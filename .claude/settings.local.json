@@ -33,7 +33,12 @@
       "Bash(node --env-file=.env.local check-user.mjs)",
       "Bash(curl -s -X POST http://localhost:3000/api/run-agent -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" --max-time 60)",
       "Bash(node --env-file=.env.local check-runtime.mjs)",
-      "Bash(rm check-runtime.mjs)"
+      "Bash(rm check-runtime.mjs)",
+      "Bash(curl -s -X GET http://localhost:3000/api/cron -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\")",
+      "Bash(curl -s -X GET http://localhost:3000/api/cron -H \"Authorization: Bearer wrong-secret\" -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\")",
+      "Bash(curl -s -X GET http://localhost:3000/api/cron -H \"Authorization: Bearer 123456\" -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" --max-time 60)",
+      "Bash(node --env-file=.env.local check-cron.mjs)",
+      "Bash(rm check-cron.mjs)"
     ]
   }
 }

@@ -6,12 +6,15 @@ manual research required.
 
 ## What it does
 
-Each day (or on demand via the dashboard's "Run now" button), the agent:
+Every hour (via an external scheduler calling `/api/cron`), or on demand
+via the dashboard's "Run now" button, the agent:
 
-1. Loops through every configured user.
-2. For each user, calls the Gemini API with Google Search grounding to find
-   recent, credible news matching their tracked keywords (architecture,
-   sustainable design, BIM, green building, etc.).
+1. Loops through every configured user (the hourly cron only processes
+   users whose chosen delivery hour matches the current UTC hour, so each
+   user gets exactly one digest per day, at their own preferred time).
+2. For each matching user, calls the Gemini API with Google Search
+   grounding to find recent, credible news matching their tracked keywords
+   (architecture, sustainable design, BIM, green building, etc.).
 3. Asks Gemini to pick and summarize the user's chosen number of top
    stories, each with a title, a one-line summary, and a source link.
 4. Saves the report to Supabase (`daily_reports`).
@@ -58,9 +61,11 @@ reports per-user success/failure.
    - **Number of news items to summarize** — default 5.
    - **Keywords to track** — comma-separated, e.g. `Architecture,
      Sustainable Design, BIM, Green Building`.
-   - **Preferred daily run time (UTC)** — a dropdown of hours. Note: this
-     is currently stored for future use but does not yet control delivery
-     timing — see [How the daily cron works](#how-the-daily-cron-works).
+   - **Preferred daily run time (Jordan time)** — a dropdown of hours,
+     shown in Jordan/Amman local time (permanently UTC+3, no daylight
+     saving) and converted to a UTC hour before it's stored. This is what
+     `/api/cron` matches against the current UTC hour — see
+     [Scheduled delivery](#scheduled-delivery-apicron) below.
 6. Submitting the form upserts your config in `user_config` (keyed by
    email, so re-submitting updates your existing row instead of creating a
    duplicate) and redirects you to `/dashboard`.
@@ -78,34 +83,65 @@ Set these in `.env.local` (see `.env.example`):
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather, used to deliver the daily digest message. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-only — bypasses RLS, never expose to the browser). |
-| `CRON_SECRET` | Optional. If set, `GET /api/run-agent` requires an `Authorization: Bearer <CRON_SECRET>` header (Vercel Cron sends this automatically when the env var is configured). Manual `POST` requests (e.g. the dashboard's "Run now" button) are not gated by this. |
+| `CRON_SECRET` | **Required** for `/api/cron` — the external scheduler must send it as `Authorization: Bearer <CRON_SECRET>`, or the request is rejected with 401. Also optionally gates `GET /api/run-agent` the same way (that one falls back to open access if `CRON_SECRET` is unset, since it's meant for manual/local use). |
 
-## How the daily cron works
+## Scheduled delivery (`/api/cron`)
 
-[vercel.json](vercel.json) schedules a single daily cron job:
+Delivery is **not** scheduled via Vercel Cron — there's no `crons` entry in
+`vercel.json`. Instead, an external scheduler (e.g. a free service like
+cron-job.org, EasyCron, or a scheduled GitHub Actions workflow) should call
+this endpoint **once every hour**:
 
-```json
-{
-  "crons": [{ "path": "/api/run-agent", "schedule": "0 13 * * *" }]
-}
+```
+GET https://<your-deployment>/api/cron
+Authorization: Bearer <CRON_SECRET>
 ```
 
-This fires `GET /api/run-agent` once a day at 13:00 UTC, which processes
-**every** row in `user_config` and sends each user their digest via
-Telegram.
+(`POST` works identically, in case your scheduler only supports POST.)
 
-The `run_time` field collected during setup is stored on each user's row
-but is **not** currently used to gate delivery — everyone is processed at
-the same fixed cron time regardless of their preference. Per-user
-scheduling would require switching to an hourly cron and having the route
-check each user's `run_time` against the current UTC hour before sending;
-that wasn't implemented here since it needs a Vercel plan that supports
-more-frequent-than-daily cron schedules (Hobby only allows once/day).
+Each call:
 
-You can also trigger a run manually at any time with:
+1. Requires the `Authorization: Bearer <CRON_SECRET>` header — a missing
+   or incorrect token returns `401 Unauthorized`, and requests are
+   rejected outright if `CRON_SECRET` isn't configured on the server at
+   all (unlike `/api/run-agent`, this endpoint has no open-access
+   fallback, since it's the one meant to be hit unattended by a
+   third-party service).
+2. Determines the current UTC hour and loads every row in `user_config`.
+3. Filters to only the users whose stored `run_time` (a UTC hour -
+   converted from whatever local time, e.g. Jordan time, they picked in
+   `/setup`) matches the current UTC hour.
+4. Runs the same Gemini + Telegram + `daily_reports` pipeline as
+   `/api/run-agent`, but only for that matched set - so each user gets
+   exactly one digest per day, at their own chosen hour, no matter how
+   often the scheduler calls in.
+5. Returns a JSON summary:
+   ```json
+   {
+     "hour": 13,
+     "totalUsers": 12,
+     "matchedUsers": 2,
+     "sent": 2,
+     "failed": 0,
+     "results": [{ "email": "...", "status": "sent", "articleCount": 5 }]
+   }
+   ```
+
+Every stage is logged (current UTC hour, users loaded, users matched,
+per-user Gemini/DB/Telegram results) — check your deployment's function
+logs if a user isn't receiving their digest at the expected hour.
+
+### Manual / all-user trigger (`/api/run-agent`)
+
+`/api/run-agent` still exists separately and is unaffected by the above —
+it processes **every** user regardless of their `run_time`, and is what
+the dashboard's "Run now" button calls (via `POST`, no auth required) for
+on-demand testing:
 
 ```bash
 curl -X POST http://localhost:3000/api/run-agent
 ```
 
-or via the "Run now" button on `/dashboard`.
+Both routes share the same underlying logic (`src/lib/agent.ts`) so
+there's one code path for fetching articles, saving reports, and sending
+Telegram messages - `/api/cron` just adds the current-hour filter on top.
