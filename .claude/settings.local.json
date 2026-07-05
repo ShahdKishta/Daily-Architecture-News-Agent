@@ -38,7 +38,11 @@
       "Bash(curl -s -X GET http://localhost:3000/api/cron -H \"Authorization: Bearer wrong-secret\" -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\")",
       "Bash(curl -s -X GET http://localhost:3000/api/cron -H \"Authorization: Bearer 123456\" -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" --max-time 60)",
       "Bash(node --env-file=.env.local check-cron.mjs)",
-      "Bash(rm check-cron.mjs)"
+      "Bash(rm check-cron.mjs)",
+      "Bash(node -e \"console.log\\(Object.keys\\(require\\('next/server'\\)\\)\\)\")",
+      "Bash(node -e \"console.log\\(Object.keys\\(require\\('@vercel/functions'\\)\\)\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(time curl -s -X GET http://localhost:3000/api/cron -H \"Authorization: Bearer 123456\" -w \"\\\\nHTTP_STATUS:%{http_code} TIME:%{time_total}s\\\\n\" --max-time 30)"
     ]
   }
 }

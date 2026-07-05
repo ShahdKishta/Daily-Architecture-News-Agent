@@ -107,29 +107,30 @@ Each call:
    all (unlike `/api/run-agent`, this endpoint has no open-access
    fallback, since it's the one meant to be hit unattended by a
    third-party service).
-2. Determines the current UTC hour and loads every row in `user_config`.
-3. Filters to only the users whose stored `run_time` (a UTC hour -
-   converted from whatever local time, e.g. Jordan time, they picked in
-   `/setup`) matches the current UTC hour.
-4. Runs the same Gemini + Telegram + `daily_reports` pipeline as
-   `/api/run-agent`, but only for that matched set - so each user gets
-   exactly one digest per day, at their own chosen hour, no matter how
-   often the scheduler calls in.
-5. Returns a JSON summary:
+2. Determines the current UTC hour and responds **immediately** with:
    ```json
-   {
-     "hour": 13,
-     "totalUsers": 12,
-     "matchedUsers": 2,
-     "sent": 2,
-     "failed": 0,
-     "results": [{ "email": "...", "status": "sent", "articleCount": 5 }]
-   }
+   { "status": "started", "hour": 13 }
    ```
+   Fetching from Gemini and sending Telegram messages for every matched
+   user can take well over 10 seconds, which is longer than many external
+   schedulers' request timeout (e.g. Crontap times out at 10s). So the
+   route doesn't wait for that work before responding - it kicks it off in
+   the background via Vercel's `waitUntil()` (from `@vercel/functions`),
+   which keeps the serverless function alive until the background work
+   finishes, then returns the fast response above right away.
+3. In the background: loads every row in `user_config`, filters to only
+   the users whose stored `run_time` (a UTC hour - converted from
+   whatever local time, e.g. Jordan time, they picked in `/setup`) matches
+   the current UTC hour, then runs the same Gemini + Telegram +
+   `daily_reports` pipeline as `/api/run-agent` for just that matched set
+   - so each user gets exactly one digest per day, at their own chosen
+   hour, no matter how often the scheduler calls in.
 
 Every stage is logged (current UTC hour, users loaded, users matched,
-per-user Gemini/DB/Telegram results) — check your deployment's function
-logs if a user isn't receiving their digest at the expected hour.
+per-user Gemini/DB/Telegram results, final sent/failed tally) — check your
+deployment's function logs to see the outcome of the background run, since
+the HTTP response itself only confirms the run *started*, not that it
+finished successfully.
 
 ### Manual / all-user trigger (`/api/run-agent`)
 
